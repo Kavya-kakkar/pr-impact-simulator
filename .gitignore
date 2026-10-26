@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+coverage.json
+build/
+dist/
+examples/.build/
+.pr-impact-out/
+demo/output/
+.pr-impact/

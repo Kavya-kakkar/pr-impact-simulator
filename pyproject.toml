@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pr-impact"
+version = "0.1.0"
+description = "Evidence-linked impact dossier for GitHub pull requests."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "tree-sitter>=0.25",
+  "tree-sitter-python>=0.23",
+]
+
+[project.optional-dependencies]
+typescript = ["tree-sitter-javascript>=0.23", "tree-sitter-typescript>=0.23"]
+dev = ["pytest>=8", "coverage>=7"]
+
+[project.scripts]
+pr-impact = "pr_impact.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["pr_impact*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
