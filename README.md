@@ -31,7 +31,7 @@ under **Limitations** in the dossier.
 ```bash
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-pip install -e ".[dev]"
+pip install -e ".[dev]"     # adds pytest, coverage, mypy, ruff
 pip install tree-sitter-javascript tree-sitter-typescript   # optional, for TS/JS
 ```
 
@@ -207,7 +207,7 @@ the repository owner enables the variable.
 python -m pytest -q
 ```
 
-72 tests cover diff parsing (including new/deleted/renamed files and hunk line
+`mypy pr_impact` is clean and `ruff check` passes. 72 tests cover diff parsing (including new/deleted/renamed files and hunk line
 numbering), signature extraction, route detection, graph resolution states,
 transitive consumer tracing, call-shape mismatch, docs drift, coverage
 correlation, risk arithmetic and caps, LLM escalation rules, artifact

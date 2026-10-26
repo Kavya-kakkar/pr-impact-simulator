@@ -15,7 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 typescript = ["tree-sitter-javascript>=0.23", "tree-sitter-typescript>=0.23"]
-dev = ["pytest>=8", "coverage>=7"]
+dev = ["pytest>=8", "coverage>=7", "mypy>=1.10", "ruff>=0.6"]
 
 [project.scripts]
 pr-impact = "pr_impact.cli:main"
@@ -26,6 +26,12 @@ include = ["pr_impact*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
 
 [tool.ruff]
 line-length = 100

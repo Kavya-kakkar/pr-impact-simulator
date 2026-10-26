@@ -182,9 +182,9 @@ def _resolve(
 
     if receiver.strip() in ("self", "cls") and "." in caller_symbol.split("::", 1)[1]:
         class_name = caller_symbol.split("::", 1)[1].split(".")[0]
-        target = graph.nodes.get(f"{module.path}::{class_name}.{name}")
-        if target is not None:
-            return target.symbol, Resolution.RESOLVED, f"same-class method via {receiver}"
+        method = graph.nodes.get(f"{module.path}::{class_name}.{name}")
+        if method is not None:
+            return method.symbol, Resolution.RESOLVED, f"same-class method via {receiver}"
         return (
             None,
             Resolution.UNRESOLVED,

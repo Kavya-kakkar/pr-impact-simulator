@@ -47,7 +47,10 @@ def detect_changes(
         head_mod = head_modules.get(head_path)
         if base_mod is None and head_mod is None:
             continue
-        if (base_mod or head_mod).language not in ("python", "javascript", "typescript", "tsx"):
+        language = (base_mod.language if base_mod else None) or (
+            head_mod.language if head_mod else ""
+        )
+        if language not in ("python", "javascript", "typescript", "tsx"):
             continue
 
         base_funcs = _public(base_mod.functions) if base_mod else {}
@@ -402,8 +405,8 @@ def _route_changes(
                 changes.append(_added_route(route, head_rev, file_diff, head_path))
 
         for route_id, old_route in before.items():
-            new_route = after.get(route_id)
-            if new_route is None or old_route.status_code == new_route.status_code:
+            head_route: RouteInfo | None = after.get(route_id)
+            if head_route is None or old_route.status_code == head_route.status_code:
                 continue
             changes.append(
                 Change(
@@ -411,7 +414,7 @@ def _route_changes(
                     symbol=symbol,
                     summary=(
                         f"Response status for {route_id} changed: "
-                        f"{old_route.status_code} -> {new_route.status_code}"
+                        f"{old_route.status_code} -> {head_route.status_code}"
                     ),
                     classification=Classification.NEEDS_HUMAN,
                     confidence=Confidence.NEEDS_HUMAN,
@@ -421,13 +424,13 @@ def _route_changes(
                             old_route.line, old_route.line,
                         ),
                         Evidence(
-                            "route", new_route.file, head_rev,
-                            new_route.line, new_route.line,
+                            "route", head_route.file, head_rev,
+                            head_route.line, head_route.line,
                         ),
                     ],
                     file=head_path,
                     route_before=old_route,
-                    route_after=new_route,
+                    route_after=head_route,
                     reasons=[
                         "static analysis cannot prove whether clients handle the new status"
                     ],
@@ -583,7 +586,7 @@ def _sort_changes(changes: list[Change]) -> list[Change]:
 
 
 def _dedupe(changes: list[Change]) -> list[Change]:
-    seen: set[tuple[str, str, str]] = set()
+    seen: set[tuple[str, str, str, str]] = set()
     unique: list[Change] = []
     for change in changes:
         key = (change.file, change.symbol, change.kind.value, change.summary)

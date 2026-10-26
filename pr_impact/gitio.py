@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .model import DiffLine, FileDiff, Hunk
@@ -88,6 +88,26 @@ def read_file(repo: Path, rev: str, path: str) -> bytes | None:
     return result.stdout
 
 
+@dataclass
+class _HunkBuilder:
+    old_start: int
+    old_len: int
+    new_start: int
+    new_len: int
+    old_cursor: int
+    new_cursor: int
+    lines: list[DiffLine] = field(default_factory=list)
+
+    def build(self) -> Hunk:
+        return Hunk(
+            old_start=self.old_start,
+            old_len=self.old_len,
+            new_start=self.new_start,
+            new_len=self.new_len,
+            lines=tuple(self.lines),
+        )
+
+
 def parse_diff(text: str) -> list[FileDiff]:
     """Parse ``git diff --unified=0`` output into typed file diffs."""
 
@@ -96,7 +116,7 @@ def parse_diff(text: str) -> list[FileDiff]:
     old_path: str | None = None
     status = "modified"
     hunks: list[Hunk] = []
-    current: dict[str, object] | None = None
+    current: _HunkBuilder | None = None
 
     def flush_file() -> None:
         nonlocal path, old_path, status, hunks, current
@@ -114,15 +134,7 @@ def parse_diff(text: str) -> list[FileDiff]:
     def flush_hunk() -> None:
         nonlocal current
         if current is not None:
-            hunks.append(
-                Hunk(
-                    old_start=current["old_start"],  # type: ignore[arg-type]
-                    old_len=current["old_len"],  # type: ignore[arg-type]
-                    new_start=current["new_start"],  # type: ignore[arg-type]
-                    new_len=current["new_len"],  # type: ignore[arg-type]
-                    lines=tuple(current["lines"]),  # type: ignore[arg-type]
-                )
-            )
+            hunks.append(current.build())
             current = None
 
     for raw in text.splitlines():
@@ -155,35 +167,33 @@ def parse_diff(text: str) -> list[FileDiff]:
             old_len = int(match.group(2) or "1")
             new_start = int(match.group(3))
             new_len = int(match.group(4) or "1")
-            current = {
-                "old_start": old_start,
-                "old_len": old_len,
-                "new_start": new_start,
-                "new_len": new_len,
-                "old_cursor": old_start,
-                "new_cursor": new_start,
-                "lines": [],
-            }
+            current = _HunkBuilder(
+                old_start=old_start,
+                old_len=old_len,
+                new_start=new_start,
+                new_len=new_len,
+                old_cursor=old_start,
+                new_cursor=new_start,
+            )
             continue
         if current is None:
             continue
         if raw.startswith("\\"):
             continue
-        old_line = current["old_cursor"]  # type: ignore[assignment]
-        new_line = current["new_cursor"]  # type: ignore[assignment]
-        lines = current["lines"]  # type: ignore[assignment]
+        old_line = current.old_cursor
+        new_line = current.new_cursor
         if raw.startswith("+"):
-            lines.append(DiffLine("+", None, new_line, raw[1:]))
-            current["new_cursor"] = new_line + 1
+            current.lines.append(DiffLine("+", None, new_line, raw[1:]))
+            current.new_cursor = new_line + 1
             continue
         if raw.startswith("-"):
-            lines.append(DiffLine("-", old_line, None, raw[1:]))
-            current["old_cursor"] = old_line + 1
+            current.lines.append(DiffLine("-", old_line, None, raw[1:]))
+            current.old_cursor = old_line + 1
             continue
         if raw.startswith(" "):
-            lines.append(DiffLine(" ", old_line, new_line, raw[1:]))
-            current["old_cursor"] = old_line + 1
-            current["new_cursor"] = new_line + 1
+            current.lines.append(DiffLine(" ", old_line, new_line, raw[1:]))
+            current.old_cursor = old_line + 1
+            current.new_cursor = new_line + 1
     flush_hunk()
     flush_file()
     return files

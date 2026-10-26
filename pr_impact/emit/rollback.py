@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from ..model import (
     Change,
     ChangeKind,
     Classification,
     CoverageReport,
+    DocDrift,
     Evidence,
     TestSkeleton,
 )
@@ -18,7 +20,7 @@ from ..parsing import module_name
 def rollback_steps(
     changes: list[Change],
     coverage: CoverageReport,
-    docs_drift: list[object],
+    docs_drift: Sequence[DocDrift],
     head_rev: str,
 ) -> list[str]:
     breaking = [c for c in changes if c.classification is Classification.BREAKING]
