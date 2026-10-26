@@ -106,11 +106,20 @@ def rollback_steps(
             "Revert or update the drifted documentation alongside the code so the "
             "README and API reference match the deployed revision."
         )
-    steps.append(
-        "Deploy the revert, verify the affected routes return their previous "
-        "status codes, and re-run this analyser with `--no-coverage` to confirm "
-        "no breaking surface remains."
-    )
+    route_changes = [
+        change for change in changes if change.route_before is not None or change.route_after is not None
+    ]
+    if route_changes:
+        steps.append(
+            "Deploy the revert, verify the affected routes return their previous "
+            "status codes, and re-run this analyser to confirm no breaking surface "
+            "remains."
+        )
+    else:
+        steps.append(
+            "Deploy the revert and re-run this analyser to confirm that no breaking "
+            "surface remains."
+        )
     return steps
 
 
