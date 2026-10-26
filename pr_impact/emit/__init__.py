@@ -1,0 +1,1 @@
+"""Artifact emitters (dossier, rollback, skeletons)."""
