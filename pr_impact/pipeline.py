@@ -18,9 +18,8 @@ from .detectors.docs import detect_doc_drift
 from .emit.dossier import dossier_to_dict, render_dossier
 from .emit.rollback import generate_skeletons, rollback_steps
 from .graph import RepoGraph, build_graph
-from .llm import NullReasoner, apply_reasoner, build_reasoner
+from .llm import apply_reasoner, build_reasoner
 from .model import (
-    Change,
     Classification,
     CoverageReport,
     Dossier,

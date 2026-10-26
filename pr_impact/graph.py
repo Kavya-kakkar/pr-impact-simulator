@@ -81,10 +81,6 @@ class RepoGraph:
     def unresolved_edges(self) -> list[GraphEdge]:
         return [edge for edge in self.edges if edge.resolution is not Resolution.RESOLVED]
 
-    def callers_of(self, symbol: str) -> list[GraphEdge]:
-        return list(self.reverse.get(symbol, []))
-
-
 def build_graph(revision: str, modules: dict[str, ModuleInfo]) -> RepoGraph:
     graph = RepoGraph(revision=revision, modules=dict(modules))
     for info in modules.values():

@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import re
-from pathlib import PurePosixPath
 
 from ..model import (
     Change,
     ChangeKind,
     Classification,
     CoverageReport,
-    Dossier,
     Evidence,
     TestSkeleton,
 )

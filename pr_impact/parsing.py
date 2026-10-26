@@ -41,8 +41,6 @@ LANGUAGE_BY_EXT = {
     ".tsx": "tsx",
 }
 
-SUPPORTED_EXTENSIONS = tuple(LANGUAGE_BY_EXT)
-
 _ROUTE_RE = re.compile(
     r"^@?(?P<receiver>[A-Za-z_][\w.]*)\.(?P<method>get|post|put|patch|delete|head|options)"
     r"\(\s*(?P<quote>[\"'])(?P<path>/[^\"']*)(?P=quote)",

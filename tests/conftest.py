@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "examples"))
 
 from build_fixture import build_fixture  # noqa: E402
+
 from pr_impact.model import Change, ChangeKind, Classification, Confidence, Evidence  # noqa: E402
 from pr_impact.pipeline import AnalyzeOptions, analyze  # noqa: E402
 

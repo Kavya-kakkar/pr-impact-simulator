@@ -1,0 +1,100 @@
+# PR Impact Simulator workflow.
+#
+# The analyser is read-only: it analyses the PR and always uploads artifacts.
+# Posting the dossier as a PR comment is OPT-IN:
+#
+#   1. A repository variable named PR_IMPACT_COMMENT must be set to "true".
+#   2. The commenting job needs the `pull-requests: write` permission, which
+#      is only granted to that job and only when the variable is set.
+#
+# Without the variable, the workflow analyses and uploads but never touches
+# the contributor's PR. See README.md ("GitHub integration") for the rationale.
+name: PR Impact
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Analyse
+        id: analyse
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          python -m pr_impact . \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --out .pr-impact \
+            --print-comment > comment.md
+          echo "risk=$(grep -o 'Verdict: [A-Z]*' comment.md | head -1)" >> "$GITHUB_OUTPUT"
+
+      - name: Upload dossier
+        uses: actions/upload-artifact@v4
+        with:
+          name: pr-impact-dossier
+          path: |
+            .pr-impact/
+            comment.md
+
+      - name: Publish summary
+        run: |
+          {
+            echo "## PR Impact"
+            echo ""
+            sed -n '1,40p' comment.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  comment:
+    needs: analyse
+    if: vars.PR_IMPACT_COMMENT == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Build comment
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          python -m pr_impact . \
+            --base "$BASE" \
+            --head "$HEAD" \
+            --out .pr-impact \
+            --print-comment > comment.md
+
+      - name: Post comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr comment "${{ github.event.pull_request.number }}" --body-file comment.md

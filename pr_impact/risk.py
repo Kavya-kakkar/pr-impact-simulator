@@ -13,8 +13,8 @@ from .model import (
     Change,
     ChangeKind,
     Classification,
-    DocDrift,
     CoverageReport,
+    DocDrift,
     RiskFactor,
     RiskScore,
 )

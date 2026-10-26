@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "examples"))
 
 from build_fixture import build_fixture  # noqa: E402
+
 from pr_impact.emit.dossier import render_dossier  # noqa: E402
 from pr_impact.model import ChangeKind, Classification  # noqa: E402
 from pr_impact.pipeline import AnalyzeOptions, analyze, write_artifacts  # noqa: E402

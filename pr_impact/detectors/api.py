@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
+from ..graph import RepoGraph
 from ..model import (
     Change,
     ChangeKind,
@@ -22,7 +23,6 @@ from ..model import (
     RouteInfo,
     Signature,
 )
-from ..graph import RepoGraph
 
 _POSITIONAL_KINDS = ("positional", "posonly")
 

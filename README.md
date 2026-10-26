@@ -181,8 +181,25 @@ relationships or test results. The deterministic demo runs with it off.
   as "not under equivalent conditions".
 - **Partial parses are possible.** Files that tree-sitter cannot fully parse are
   still analysed, and the dossier states that their facts are incomplete.
-- **No GitHub write path.** Local analysis is the source of truth; posting to a
-  PR needs a separate, explicitly authorised integration.
+- **No GitHub write path in local mode.** Local analysis is the source of truth;
+  the CLI never comments on a PR.
+
+## GitHub integration
+
+`.github/workflows/pr-impact.yml` runs the analyser on every pull request and
+always uploads `.pr-impact/` plus `comment.md` as an artifact, and writes a
+short summary to the job summary.
+
+Posting the dossier as a PR comment is **opt-in**:
+
+1. set the repository variable `PR_IMPACT_COMMENT` to `true`;
+2. the commenting job then requests `pull-requests: write`, which is granted
+   only to that job and only when the variable is set.
+
+The write permission is therefore never present in the default path, and the
+analyser itself performs no network calls - the workflow shells out to `gh`
+with the token it was given. Contributors are not notified automatically unless
+the repository owner enables the variable.
 
 ## Tests
 

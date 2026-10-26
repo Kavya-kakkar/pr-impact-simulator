@@ -7,7 +7,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from ..model import Change, Classification, Confidence, Dossier, DocDrift, Evidence
+from ..model import Change, Classification, DocDrift, Dossier
 
 
 def render_dossier(dossier: Dossier) -> str:
@@ -36,9 +36,9 @@ def render_dossier(dossier: Dossier) -> str:
     review = [c for c in dossier.changes if c.classification is Classification.NEEDS_HUMAN]
     additive = [c for c in dossier.changes if c.classification is Classification.ADDITIVE]
 
-    lines.extend(_change_section("Breaking changes", breaking, dossier))
-    lines.extend(_change_section("Needs human review", review, dossier))
-    lines.extend(_change_section("Additive changes", additive, dossier))
+    lines.extend(_change_section("Breaking changes", breaking))
+    lines.extend(_change_section("Needs human review", review))
+    lines.extend(_change_section("Additive changes", additive))
     lines.extend(_coverage_section(dossier))
     lines.extend(_doc_section(dossier.doc_drift))
     lines.extend(_skeleton_section(dossier))
@@ -89,7 +89,7 @@ def _verdict_sentence(dossier: Dossier) -> str:
     return ", ".join(parts) + "."
 
 
-def _change_section(title: str, changes: list[Change], dossier: Dossier) -> list[str]:
+def _change_section(title: str, changes: list[Change]) -> list[str]:
     if not changes:
         return [f"## {title}", "", "None detected.", ""]
     lines = [f"## {title}", ""]
@@ -236,15 +236,3 @@ def _jsonable(value: Any) -> Any:
 
 def _escape(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
-
-
-def evidence_lines(evidence: list[Evidence]) -> list[str]:
-    return [f"- `{item.loc()}` - {item.detail or item.kind}" for item in evidence]
-
-
-def confidence_label(confidence: Confidence) -> str:
-    return {
-        Confidence.OBSERVED: "observed fact",
-        Confidence.INFERRED: "inferred",
-        Confidence.NEEDS_HUMAN: "requires human judgement",
-    }[confidence]

@@ -11,8 +11,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-REVISIONS = ("base", "head")
-
 
 class Confidence(str, Enum):
     OBSERVED = "observed"
