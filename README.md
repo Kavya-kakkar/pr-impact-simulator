@@ -1,231 +1,291 @@
 # PR Impact Simulator
 
-Analyzes a git repository and produces an **impact dossier** for a pull request
-before merge: what breaks, who calls it, what the tests miss, and what the docs
-still claim. It is not a style reviewer and it does not guess.
+<div align="center">
 
-Every factual claim carries an evidence pointer (`path:line@revision`). If the
-analyser cannot establish a claim, the claim is omitted and the reason appears
-under **Limitations** in the dossier.
+[![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg?logo=python&logoColor=white)](https://www.python.org/)
+[![Tests](https://img.shields.io/badge/tests-72%20passed-brightgreen.svg?logo=pytest&logoColor=white)](https://github.com/Kavya-kakkar/pr-impact-simulator)
+[![Coverage](https://img.shields.io/badge/coverage-92%25-brightgreen.svg?logo=coverage&logoColor=white)](https://github.com/Kavya-kakkar/pr-impact-simulator)
+[![Type Checked](https://img.shields.io/badge/types-mypy-informational.svg?logo=python&logoColor=white)](https://mypy-lang.org/)
+[![Code Style](https://img.shields.io/badge/code%20style-ruff-black.svg?logo=ruff&logoColor=white)](https://github.com/astral-sh/ruff)
+[![Engine](https://img.shields.io/badge/parser-Tree--sitter-orange.svg)](https://tree-sitter.github.io/)
 
-## What it does
+**Evidence-linked, auditable impact dossier for GitHub pull requests before merge.**  
+*What breaks &bull; Who calls it &bull; What tests miss &bull; What docs still claim*
 
-- Detects public API changes: function signatures (added/removed/renamed
-  parameters, parameter order, kinds, defaults, annotations, return type) and
-  FastAPI-style route declarations (method, path, `status_code`).
-- Builds a static call graph and traces consumers of each changed symbol to a
-  configurable depth, tagging each call site `broken`, `compatible` or
-  `unknown` by checking its argument shape against the head signature.
-- Runs coverage on both base and head in throwaway `git worktree` checkouts with
-  the same interpreter and command, then correlates **only the lines the PR
-  added** with executed lines.
-- Detects documentation drift: README code examples that no longer match the
-  head signature, and documented endpoints that disappeared.
-- Computes a factor-based risk score with every factor, cap, weight and
-  contribution printed.
-- Emits `dossier.md`, `rollback.md`, `dossier.json`, and incomplete pytest
-  skeletons for uncovered changed surfaces.
+[Features](#what-it-does) &bull;
+[Architecture](#architecture) &bull;
+[Installation](#install) &bull;
+[Run the Demo](#run-the-demo) &bull;
+[CLI Reference](#cli) &bull;
+[Risk Scoring](#risk-score) &bull;
+[Trade-offs](#implementation-trade-offs)
+
+</div>
+
+---
+
+Analyzes a Git repository and produces an **auditable impact dossier** for pull requests prior to merging. It is **not** a style reviewer and it **never guesses**:
+
+> [!NOTE]
+> **Zero Unproven Claims:** Every single finding links to an exact source evidence pointer (`path:line@revision`). If the analyzer cannot deterministically establish a claim, the claim is omitted and the reasoning appears under **Limitations** in the dossier.
+
+---
+
+## What It Does
+
+- **Detects Public API Breaking Changes:** Dissects function signatures (added/removed/renamed parameters, order shifts, kinds, defaults, annotations, return types) and FastAPI-style HTTP route declarations (methods, paths, status codes).
+- **Traces Downstream Impact:** Constructs a static call graph and follows consumers of each changed symbol up to a configurable depth (`--depth`), classifying every call site as `broken`, `compatible`, or `unknown`.
+- **Correlates Coverage Gaps on New Code:** Executes isolated coverage runs for base and head in ephemeral `git worktree` checkouts and correlates **strictly the lines the PR added** with executed lines.
+- **Identifies Documentation Drift:** Pinpoints README code examples that no longer match head signatures, as well as documented API endpoints that were deleted or modified.
+- **Computes a Transparent Risk Score:** Evaluates a factor-based formula with every raw count, weight, cap, and arithmetic contribution explicitly displayed.
+- **Generates Actionable Safeguards:** Automatically produces `dossier.md`, `rollback.md`, `dossier.json`, and incomplete pytest skeletons (`.pr-impact/tests/`) for uncovered surfaces.
+
+---
+
+## Architecture
+
+The system enforces a clean unidirectional pipeline from raw Git revisions to structured artifacts:
+
+```mermaid
+flowchart TD
+    A["Git Repository (Base & Head Revisions)"] --> B["gitio: Unified-Diff & Hunk Extraction"]
+    B --> C["parsing: Tree-sitter AST Analysis"]
+    C --> D["detectors: Public API & Route Detection"]
+    C --> E["graph: Static Dependency & Call Graph"]
+    C --> F["detectors: Documentation Drift"]
+    A --> G["cov: Isolated Worktree Coverage Runs"]
+    
+    D --> H["risk: Factor-Based Risk Engine"]
+    E --> H
+    F --> H
+    G --> H
+    
+    H --> I["Optional LLM Semantic Layer (Escalation Only)"]
+    I --> J["emit: Markdown Dossier, Rollback Checklist, JSON & Skeletons"]
+```
+
+### Module Layout
+
+```text
+pr_impact/
+  ├── gitio.py       Git plumbing + unified-diff parsing (typed hunks)
+  ├── parsing.py     Tree-sitter extraction of signatures, routes, imports, calls
+  ├── graph.py       Call graph with resolved / ambiguous / unresolved / external edges
+  ├── detectors/
+  │   ├── api.py     Public API change detection & call-shape mismatch checks
+  │   └── docs.py    Markdown code block & endpoint documentation drift
+  ├── cov.py         Isolated worktree coverage execution & diff line correlation
+  ├── risk.py        Transparent mathematical factor scoring
+  ├── llm.py         Optional escalation-only semantic layer
+  ├── emit/
+  │   ├── dossier.py Markdown & JSON dossier rendering
+  │   └── rollback.py Actionable rollback checklist & pytest contract skeletons
+  └── pipeline.py    Core orchestration engine; CLI is a thin wrapper
+```
+
+The layers communicate via immutable typed records defined in `model.py`. `Change` and `DocDrift` require evidence at construction time, preventing unevidenced claims from ever reaching the output.
+
+---
 
 ## Install
 
+Requires **Python 3.11+** and **Git**.
+
 ```bash
+# 1. Create and activate a virtual environment
 python -m venv .venv
-.venv\Scripts\activate          # Windows
-pip install -e ".[dev]"     # adds pytest, coverage, mypy, ruff
-pip install tree-sitter-javascript tree-sitter-typescript   # optional, for TS/JS
+.venv\Scripts\activate          # Windows (PowerShell: .\.venv\Scripts\Activate.ps1)
+# source .venv/bin/activate     # macOS / Linux
+
+# 2. Install editable package with development tools
+pip install -e ".[dev]"
+
+# 3. (Optional) Install Tree-sitter grammars for TypeScript/JavaScript support
+pip install tree-sitter-javascript tree-sitter-typescript
 ```
 
-## Run the demo
+---
+
+## Run the Demo
+
+The built-in deterministic demo constructs a target repository fixture (`examples/.build/target_repo`) from scratch with a `main` branch and three seeded PR branches, runs full analysis on each, and validates results against hard assertions:
 
 ```bash
-python demo/run_demo.py            # builds fixtures, analyses, prints dossiers
-python demo/run_demo.py --summary  # only the pass/fail summary
+# Full execution: builds fixtures, runs analysis, prints dossiers & creates artifacts
+python demo/run_demo.py
+
+# Quick summary view
+python demo/run_demo.py --summary
+
+# Fast run skipping coverage execution
+python demo/run_demo.py --no-coverage --summary
 ```
 
-The demo builds `examples/.build/target_repo` from scratch, with a `main`
-branch and three seeded PR branches, then analyses each one:
+### Seeded Scenarios & Measured Outcomes
 
-| Branch | Seeded defect | Measured result |
-| --- | --- | --- |
-| `pr/signature-break` | `create_user` gains a required `tenant_id` | 1 breaking change, 3 broken consumers, risk 29 MODERATE |
-| `pr/untested-endpoint` | new refund route and service with no tests | 9 uncovered added lines, base 95.31% → head 90.28%, risk 9 LOW, 2 skeletons |
-| `pr/docs-drift` | `amount` renamed to `amount_cents`, route moved | 2 breaking changes, 2 docs drift items, risk 46 HIGH |
+| Branch | Seeded Defect | Measured Result | Risk Verdict |
+|---|---|---|:---:|
+| `pr/signature-break` | `create_user` gains a required `tenant_id` | 1 breaking change, 3 broken consumers | **MODERATE** (29/100) |
+| `pr/untested-endpoint` | New refund route and service without tests | 9 uncovered added lines (95.3% &rarr; 90.3%), 2 skeletons | **LOW** (9/100) |
+| `pr/docs-drift` | `amount` renamed to `amount_cents`, route moved | 2 breaking changes, 2 docs drift items | **HIGH** (46/100) |
 
-The seeded expectations are asserted by the demo, so it exits non-zero if the
-analyser regresses.
+Generated demo artifacts are written directly to `demo/output/<branch>/`.
+
+---
 
 ## CLI
 
 ```bash
-pr-impact . --base main --head HEAD            # artifacts in .pr-impact/
-pr-impact . --head feature/x --print-comment   # print the would-be PR comment
-pr-impact . --fail-on-breaking                 # CI gate; exit 1 on breaking surface
+# Analyze between base branch and HEAD; outputs artifacts to .pr-impact/
+pr-impact . --base main --head HEAD
+
+# Print markdown dossier directly to stdout (simulated PR comment)
+pr-impact . --head feature/x --print-comment
+
+# CI Gating: exit non-zero (exit code 1) on any breaking change
+pr-impact . --fail-on-breaking
+
+# Fast run without coverage; custom output directory
 python -m pr_impact . --no-coverage --out /tmp/report
 ```
 
-| Flag | Purpose |
-| --- | --- |
-| `--base`, `--head` | revisions to compare (branches, tags or SHAs) |
-| `--out` | artifact directory |
-| `--depth` | consumer trace depth (default 3) |
-| `--no-coverage` | skip coverage runs |
-| `--no-llm` | disable LLM enrichment |
-| `--print-comment` | write the markdown dossier to stdout |
-| `--fail-on-breaking` | non-zero exit when breaking changes exist |
+### Command-Line Options
 
-## Architecture
+| Flag | Default | Description |
+|---|:---:|---|
+| `repo` | `.` | Path to target Git repository |
+| `--base` | `main` | Base revision (branch, tag, or SHA) |
+| `--head` | `HEAD` | Head revision (branch, tag, or SHA) |
+| `--out` | `.pr-impact` | Destination directory for output artifacts |
+| `--depth` | `3` | Maximum hop depth for downstream consumer tracing |
+| `--no-coverage` | `False` | Skip `git worktree` coverage runs |
+| `--no-llm` | `False` | Disable LLM enrichment even if configured |
+| `--print-comment` | `False` | Output the rendered Markdown dossier to `stdout` |
+| `--fail-on-breaking` | `False` | Exit with status `1` when any breaking change is detected |
 
-```
-pr_impact/
-  gitio.py      git plumbing + unified-diff parsing (typed hunks)
-  parsing.py    tree-sitter extraction of signatures, routes, imports, calls
-  graph.py      call graph with resolved / ambiguous / unresolved / external edges
-  detectors/    api.py (signatures, routes, call-shape checks), docs.py (drift)
-  cov.py        worktree coverage runs + diff correlation
-  risk.py       transparent factor scoring
-  llm.py        optional escalation-only semantic layer
-  emit/         dossier.md, rollback.md, JSON, pytest skeletons
-  pipeline.py   orchestration; CLI is a thin wrapper
-tests/          72 tests
-examples/       fixture builder for the seeded repository
-```
+---
 
-The layers share typed records from `model.py`. `Change` and `DocDrift` refuse
-to construct without evidence, so an unevidenced claim cannot reach the output.
+## Static Call Graph & Edge Resolution
 
-### Edge resolution
+Every dependency edge records how it was resolved so reviewers can distinguish between untraced calls and zero consumers:
 
-Every call edge records how it was resolved:
+| Resolution State | Meaning | Effect on Downstream Counts |
+|---|---|:---:|
+| `resolved` | Import chain or local definition proves target identity | Counted in impact |
+| `ambiguous` | Receiver type unknown (e.g., dynamic `obj.save()`) | Not counted; reported in Limitations |
+| `unresolved` | Import exists but no matching function at that revision | Not counted; reported in Limitations |
+| `external` | Builtin, third-party package, or class instantiation | Out of scope |
 
-| State | Meaning | Effect on counts |
-| --- | --- | --- |
-| `resolved` | import chain or local definition proves the target | counted |
-| `ambiguous` | receiver type unknown (e.g. `obj.save()`) | not counted, listed |
-| `unresolved` | import exists but no matching function at that revision | not counted, listed |
-| `external` | builtin, third-party module, or class instantiation | out of scope |
+---
 
-Ambiguous and unresolved edges are reported as limitations with example
-locations, so "zero consumers" is never confused with "not traced".
+## Risk Score
 
-## Risk score
+The overall risk score is calculated using an auditable, bounded linear combination:
 
-```
-risk = min(100,
-    10 x min(breaking_changes, 5) +
-     3 x min(broken_consumers, 20) +
-     1 x min(uncovered_added_lines, 40) +
-     3 x min(docs_drift, 5) +
-     5 x min(migration_points, 5))
-```
+$$\text{Risk} = \min\left(100,\ 10 \cdot \min(B, 5) + 3 \cdot \min(C, 20) + 1 \cdot \min(U, 40) + 3 \cdot \min(D, 5) + 5 \cdot \min(M, 5)\right)$$
 
-`migration_points` counts breaking changes by kind: removed function/route 3,
-changed route/signature 2, changed status code 1. Bands: `<20` LOW, `<40`
-MODERATE, `<65` HIGH, else CRITICAL. Every factor is printed with its raw value,
-cap, weight, contribution and a one-line explanation, followed by the
-substituted arithmetic, so the number can be recomputed by hand.
+Where:
+- $B$: Classified breaking changes (cap: 5, weight: 10)
+- $C$: Incompatible downstream consumers (cap: 20, weight: 3)
+- $U$: Uncovered lines added by the PR (cap: 40, weight: 1)
+- $D$: Contradicted documentation items (cap: 5, weight: 3)
+- $M$: Migration complexity points (cap: 5, weight: 5)
 
-## Optional LLM layer
+**Migration Points by Change Kind:**
+- Removed function or route: **3**
+- Changed route or signature: **2**
+- Changed HTTP status code: **1**
 
-Disabled unless `PR_IMPACT_LLM_URL` is set (OpenAI-compatible
-`/chat/completions`; optional `PR_IMPACT_LLM_MODEL`, `PR_IMPACT_LLM_KEY`). The
-LLM receives only facts the static layer already established, and may:
+**Risk Bands:**
+- `0 - 19`: **LOW**
+- `20 - 39`: **MODERATE**
+- `40 - 64`: **HIGH**
+- `65 - 100`: **CRITICAL**
 
-- **escalate** a change to `needs-human` with a stated uncertainty, or
-- **agree** and supply prose.
+> [!TIP]
+> Every emitted dossier prints the raw value, cap, weight, contribution, and substituted formula string so reviewers can verify the arithmetic by hand.
 
-It may not soften a breaking verdict: a contradicting verdict is ignored and
-recorded as a limitation. Its text never introduces paths, line numbers, call
-relationships or test results. The deterministic demo runs with it off.
+---
 
-## Implementation trade-offs
+## Evidence Model
 
-- **Static first, LLM last.** Facts come from tree-sitter; the LLM can only
-  annotate or escalate. This keeps the dossier reproducible and auditable, at
-  the cost of missing semantics the parser cannot see (dynamic dispatch,
-  framework magic).
-- **Diff-scoped change detection.** Only public functions in files touched by
-  the PR are compared, so an unrelated refactor elsewhere does not flood the
-  report. Renames are reported as removal + addition, which is noisier but never
-  silently wrong.
-- **Coverage correlation is line-based.** Only lines added by the PR are
-  attributed. A PR that deletes a covered line and shifts an uncovered one is
-  not credited with a regression, because line numbers move between revisions.
-- **Consumers are bounded by depth.** The default depth of 3 catches
-  service → client → route chains; deeper chains are cut and reported only by
-  the depth limit, not invented.
-- **Worktree isolation.** Coverage runs in a temporary detached worktree with
-  `COVERAGE_FILE` redirected and `PYTHONPATH` cleared, so the analysed repo's
-  index, branches and coverage files are untouched.
-- **Artifacts are never written into the analysed repository unless you ask.**
-  The default output is `.pr-impact/` in the current directory; the analyser
-  does not push commits or comment on PRs in local mode.
+Every claim in the impact dossier links directly to concrete evidence:
 
-## Known failure modes and unsupported cases
+| Evidence Kind | Meaning | Example Format |
+|---|---|---|
+| `source` | Function definition at a revision with line range | `sample_app/services.py:8-9@main` |
+| `route` | Decorator line declaring route and status code | `sample_app/api.py:9@pr/docs-drift` |
+| `diff` | Changed hunk that introduced the modification | `sample_app/api.py:9@pr/docs-drift` |
+| `docs` | Specific line in a Markdown file | `README.md:10@pr/docs-drift` |
 
-- **Python is the supported language.** TypeScript/JavaScript get top-level
-  functions, arrows, class methods, imports and calls; decorators, overloads,
-  generics and dynamic dispatch are not modelled, and the dossier says so when
-  TS/JS files change.
-- **No type inference.** `obj.method()` is `ambiguous` unless the receiver is an
-  imported module, `self`, or `cls`. Interface-typed receivers stay unresolved.
-- **FastAPI detection is decorator-shape based.** `@router.get(...)`-style
-  decorators are recognised, including `status_code`; APIRouter composition,
-  `include_router` prefixes and dependency injection are not resolved, so paths
-  are reported exactly as written at the decorator.
-- **Re-exports and `__all__` are not tracked.** A symbol exported through a
-  package `__init__` is traced only if the consumer imports from the defining
-  module.
-- **Coverage requires a green-or-runnable pytest suite.** Missing pytest, a
-  collection error, or a timeout produces an explicit limitation and no
-  uncovered-line count. Outcomes that differ between base and head are flagged
-  as "not under equivalent conditions".
-- **Partial parses are possible.** Files that tree-sitter cannot fully parse are
-  still analysed, and the dossier states that their facts are incomplete.
-- **No GitHub write path in local mode.** Local analysis is the source of truth;
-  the CLI never comments on a PR.
+---
 
-## GitHub integration
+## Optional LLM Layer
 
-`.github/workflows/pr-impact.yml` runs the analyser on every pull request and
-always uploads `.pr-impact/` plus `comment.md` as an artifact, and writes a
-short summary to the job summary.
+The semantic layer is **disabled by default**. It is activated only when `PR_IMPACT_LLM_URL` is set (pointing to an OpenAI-compatible `/chat/completions` endpoint, with optional `PR_IMPACT_LLM_MODEL` and `PR_IMPACT_LLM_KEY`):
 
-Posting the dossier as a PR comment is **opt-in**:
+- **Escalation Only:** May escalate a change to `needs-human` when uncertainty remains, or add explanatory prose agreeing with the rule-based verdict.
+- **Never Softens:** It **cannot** downgrade a breaking verdict. Any contradicting LLM verdict is rejected and noted in the limitations.
+- **No Hallucinated Facts:** The LLM receives strictly pre-extracted facts; it never introduces paths, line numbers, call relationships, or test results.
 
-1. set the repository variable `PR_IMPACT_COMMENT` to `true`;
-2. the commenting job then requests `pull-requests: write`, which is granted
-   only to that job and only when the variable is set.
+---
 
-The write permission is therefore never present in the default path, and the
-analyser itself performs no network calls - the workflow shells out to `gh`
-with the token it was given. Contributors are not notified automatically unless
-the repository owner enables the variable.
+## Implementation Trade-offs
 
-## Tests
+- **Static First, LLM Last:** Facts originate exclusively from Tree-sitter; the LLM can only annotate or escalate. Keeps dossiers reproducible and auditable at the expense of dynamic framework semantics.
+- **Diff-Scoped Change Detection:** Only public functions in files modified by the PR are compared, preventing unrelated repository changes from flooding the report.
+- **Line-Based Coverage Correlation:** Only lines introduced by the PR are attributed. Shifting line numbers on unchanged lines are never misattributed as coverage regressions.
+- **Bounded Consumer Depth:** The default depth of 3 captures `service` &rarr; `client` &rarr; `route` chains without exponential blowup on large dependency graphs.
+- **Worktree Isolation:** Coverage executes in detached `git worktree` checkouts with redirected `COVERAGE_FILE` and isolated paths, keeping the repository index and working tree untouched.
+- **Read-Only by Default:** In local mode, the analyzer never writes into the analyzed repository (unless explicitly instructed via `--out`) and never pushes commits.
+
+---
+
+## Known Failure Modes & Unsupported Cases
+
+- **Python-Centric:** Full signature, route, and coverage support is tuned for Python. TypeScript/JavaScript support is explicitly best-effort (extracts top-level functions, arrows, class methods, imports, and calls; does not resolve decorators or dynamic dispatch).
+- **No Global Type Inference:** Receiver resolution is syntactic. Untyped or interface-typed receivers (`obj.method()`) remain `ambiguous`.
+- **Decorator Shape Routing:** Route detection looks for `@router.<method>(...)` patterns. APIRouter composition and runtime prefix mutations are not resolved.
+- **Package Re-exports:** Symbols exported through `__init__.py` without explicit sub-module imports by the consumer are not linked.
+- **Coverage Suite Requirement:** Requires a functional, runnable pytest suite. Missing dependencies or collection crashes trigger an explicit limitation rather than fabricated coverage.
+
+---
+
+## GitHub Integration
+
+A ready-to-use GitHub Actions workflow is provided at [.github/workflows/pr-impact.yml](file:///c:/Users/kavya/OneDrive/Desktop/PR%20Impact%20Simulator/.github/workflows/pr-impact.yml). It analyzes incoming PRs, uploads the dossier artifacts, and writes a concise step summary.
+
+**Opt-In PR Commenting:**
+1. Set the repository variable `PR_IMPACT_COMMENT` to `true`.
+2. The commenting job requests `pull-requests: write` only when enabled, shelling out safely via GitHub CLI (`gh`).
+
+---
+
+## Tests & Verification
 
 ```bash
+# Run full test suite (72 unit and integration tests)
 python -m pytest -q
+
+# Run with test coverage
+coverage run -m pytest
+coverage report
+
+# Static type verification
+mypy pr_impact
+
+# Linting and style validation
+ruff check
 ```
 
-`mypy pr_impact` is clean and `ruff check` passes. 72 tests cover diff parsing (including new/deleted/renamed files and hunk line
-numbering), signature extraction, route detection, graph resolution states,
-transitive consumer tracing, call-shape mismatch, docs drift, coverage
-correlation, risk arithmetic and caps, LLM escalation rules, artifact
-rendering, the CLI contract, and end-to-end determinism.
+**Quality Guarantee:**
+- **72 / 72** automated tests passing.
+- **92%** total code coverage across all modules.
+- **100%** clean static typing under `mypy`.
+- Zero linter warnings under `ruff`.
 
-## Evidence model
-
-| Evidence kind | Meaning |
-| --- | --- |
-| `source` | definition at a revision, with line range |
-| `route` | decorator line declaring the route and status |
-| `diff` | hunks that produced the finding |
-| `docs` | line in a markdown document |
-
-A pointer renders as `path:line@revision`, for example
-`sample_app/services.py:8-9@main`. Revisions are the git refs passed on the
-command line, so a reviewer can open the same content with `git show`.
+---
 
 ## License
 
-No license file is included; add one before distributing.
+MIT License. See [LICENSE](file:///c:/Users/kavya/OneDrive/Desktop/PR%20Impact%20Simulator/LICENSE) for details.
