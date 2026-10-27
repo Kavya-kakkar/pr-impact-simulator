@@ -11,3 +11,5 @@ examples/.build/
 .pr-impact-out/
 demo/output/
 .pr-impact/
+.mypy_cache/
+.ruff_cache/

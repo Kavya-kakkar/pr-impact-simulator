@@ -23,6 +23,10 @@ COVERAGE_COMMAND = "python -m coverage run -m pytest -q"
 DEFAULT_TIMEOUT = 180
 
 
+def _coverage_python() -> str:
+    return os.environ.get("PR_IMPACT_COVERAGE_PYTHON") or sys.executable
+
+
 def _default_timeout() -> int:
     raw = os.environ.get("PR_IMPACT_COVERAGE_TIMEOUT")
     if raw and raw.isdigit():
@@ -47,6 +51,7 @@ def run_coverage(repo: Path, revision: str, timeout: int | None = None) -> Cover
     temp_root = Path(tempfile.mkdtemp(prefix="pr-impact-cov-"))
     worktree = temp_root / "tree"
     coverage_file = temp_root / ".coverage"
+    py_bin = _coverage_python()
     try:
         try:
             run_git(repo, "worktree", "add", "--detach", str(worktree), revision)
@@ -54,15 +59,20 @@ def run_coverage(repo: Path, revision: str, timeout: int | None = None) -> Cover
             outcome.limitations.append(f"could not create coverage worktree: {exc}")
             return outcome
 
+        pythonpath = (
+            str(worktree / "backend")
+            if (worktree / "backend").is_dir()
+            else (os.environ.get("PYTHONPATH") or "")
+        )
         env = {
             **os.environ,
             "COVERAGE_FILE": str(coverage_file),
             "PYTHONDONTWRITEBYTECODE": "1",
-            "PYTHONPATH": "",
+            "PYTHONPATH": pythonpath,
         }
         try:
             run = subprocess.run(
-                [sys.executable, "-m", "coverage", "run", "-m", "pytest", "-q"],
+                [py_bin, "-m", "coverage", "run", "-m", "pytest", "-q"],
                 cwd=worktree,
                 capture_output=True,
                 text=True,
@@ -103,7 +113,7 @@ def run_coverage(repo: Path, revision: str, timeout: int | None = None) -> Cover
         report_path = temp_root / "coverage.json"
         report = subprocess.run(
             [
-                sys.executable,
+                py_bin,
                 "-m",
                 "coverage",
                 "json",
